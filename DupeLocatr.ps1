@@ -1,30 +1,4 @@
-<#
-    DupeLocatr
-    ----------
-    A menu-driven duplicate file finder & cleaner for Windows.
 
-    - Recursively scans the current folder (and every subfolder) for
-      duplicate files of ANY type: images, videos, music, text, documents,
-      archives, whatever.
-    - Uses a 3-stage "fast path" so it never wastes time hashing files that
-      can't possibly be duplicates:
-          1) group by file size            (instant, in-memory)
-          2) quick partial hash (64 KB)     (cheap, filters out non-matches)
-          3) full hash (MD5/SHA256)         (only run on real candidates)
-      This means a folder full of large videos gets scanned fast, because
-      most videos never even get fully read.
-    - NEVER deletes or moves anything without asking first.
-    - Deletions go to the Recycle Bin (recoverable), not permanent removal.
-    - "Move to folder" uses robocopy under the hood (fast, reliable, built
-      into Windows, handles long paths and retries better than a plain copy).
-    - Colored console output + a progress bar during scanning.
-
-    Usage:
-        powershell -ExecutionPolicy Bypass -File DupeLocatr.ps1
-        powershell -ExecutionPolicy Bypass -File DupeLocatr.ps1 -Path "D:\Photos"
-
-    (Or just double-click Run_DupeLocatr.bat sitting next to this file.)
-#>
 
 param(
     [string]$Path = (Get-Location).Path
@@ -33,27 +7,27 @@ param(
 # ======================================================================
 #  CONFIG / STATE
 # ======================================================================
-$Script:RootPath       = (Resolve-Path -LiteralPath $Path).Path
+$Script:RootPath = (Resolve-Path -LiteralPath $Path).Path
 $Script:DupeFolderName = "encounted_duplicates"
-$Script:HashAlgo       = "MD5"          # MD5 (fast, default) or SHA256 (slower/stronger)
-$Script:KeepStrategy   = "First"        # First | Oldest | Newest | ShortestPath
+$Script:HashAlgo = "MD5"          # MD5 (fast, default) or SHA256 (slower/stronger)
+$Script:KeepStrategy = "First"        # First | Oldest | Newest | ShortestPath
 $Script:CategoryFilter = "All"          # All | Images | Videos | Music | Text | Documents | Archives
 $Script:MinFileSizeBytes = 1            # ignore 0-byte files by default
 $Script:ExcludeFolders = @(
     $Script:DupeFolderName, '.git', '.svn', 'node_modules',
     '$RECYCLE.BIN', 'System Volume Information', '.vs', '.vscode', '__pycache__'
 )
-$Script:LogPath    = Join-Path $Script:RootPath "dupeLocatr_log.txt"
+$Script:LogPath = Join-Path $Script:RootPath "dupeLocatr_log.txt"
 $Script:ScriptSelf = $PSCommandPath
 $Script:LastResults = $null
 
 $Script:Categories = @{
-    'Images'    = @('.jpg','.jpeg','.png','.gif','.bmp','.tiff','.tif','.webp','.heic','.heif','.svg','.ico','.raw','.cr2','.nef','.arw','.dng')
-    'Videos'    = @('.mp4','.mkv','.avi','.mov','.wmv','.flv','.webm','.m4v','.mpg','.mpeg','.3gp','.ts','.vob')
-    'Music'     = @('.mp3','.wav','.flac','.aac','.ogg','.wma','.m4a','.opus','.aiff','.mid')
-    'Text'      = @('.txt','.md','.log','.csv','.json','.xml','.yaml','.yml','.ini','.cfg')
-    'Documents' = @('.pdf','.doc','.docx','.xls','.xlsx','.ppt','.pptx','.odt','.rtf')
-    'Archives'  = @('.zip','.rar','.7z','.tar','.gz','.bz2')
+    'Images'    = @('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.tif', '.webp', '.heic', '.heif', '.svg', '.ico', '.raw', '.cr2', '.nef', '.arw', '.dng')
+    'Videos'    = @('.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.mpg', '.mpeg', '.3gp', '.ts', '.vob')
+    'Music'     = @('.mp3', '.wav', '.flac', '.aac', '.ogg', '.wma', '.m4a', '.opus', '.aiff', '.mid')
+    'Text'      = @('.txt', '.md', '.log', '.csv', '.json', '.xml', '.yaml', '.yml', '.ini', '.cfg')
+    'Documents' = @('.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.odt', '.rtf')
+    'Archives'  = @('.zip', '.rar', '.7z', '.tar', '.gz', '.bz2')
 }
 
 try { $Host.UI.RawUI.WindowTitle = "DupeLocatr" } catch {}
@@ -72,21 +46,19 @@ function Format-Size {
 function Write-Banner {
     Clear-Host
     $art = @'
-    .___                  .__                        __          
-  __| _/_ ________   ____ |  |   ____   ____ _____ _/  |________ 
- / __ |  |  \____ \_/ __ \|  |  /  _ \_/ ___\\__  \\   __\_  __ \
-/ /_/ |  |  /  |_> >  ___/|  |_(  <_> )  \___ / __ \|  |  |  | \/
-\____ |____/|   __/ \___  >____/\____/ \___  >____  /__|  |__|   
-     \/     |__|        \/                 \/     \/             
-                                     
+       __                 __                 __      
+  ____/ /_  ______  ___  / /___  _________ _/ /______
+ / __  / / / / __ \/ _ \/ / __ \/ ___/ __ `/ __/ ___/
+/ /_/ / /_/ / /_/ /  __/ / /_/ / /__/ /_/ / /_/ /    
+\__,_/\__,_/ .___/\___/_/\____/\___/\__,_/\__/_/     
+          /_/                                                                                                                                                                            
 '@
-    $lines  = $art -split "`r`n|`n"
-    $colors = @('Magenta','Cyan','Blue','Green','Yellow','Red')
+    $lines = $art -split "`r`n|`n"
+    # $colors = @('Magenta', 'Cyan', 'Blue', 'Green', 'Yellow', 'Red')
     for ($i = 0; $i -lt $lines.Count; $i++) {
-        Write-Host $lines[$i] -ForegroundColor $colors[$i % $colors.Count]
+        Write-Host $lines[$i] -ForegroundColor Gray #$colors[$i % $colors.Count]
     }
-    Write-Host "        find them. face them. finish them." -ForegroundColor DarkGray
-    Write-Host ""
+    # Write-Host ""
 }
 
 function Test-IsExcluded {
@@ -121,10 +93,12 @@ function Get-PartialHash {
             $md5 = [System.Security.Cryptography.MD5]::Create()
             $hashBytes = $md5.ComputeHash($buffer)
             return [System.BitConverter]::ToString($hashBytes) -replace '-', ''
-        } finally {
+        }
+        finally {
             $stream.Dispose()
         }
-    } catch {
+    }
+    catch {
         return $null
     }
 }
@@ -138,19 +112,19 @@ function Get-CandidateFiles {
     $counter = 0
 
     Get-ChildItem -LiteralPath $Script:RootPath -File -Recurse -Force -ErrorAction SilentlyContinue |
-        ForEach-Object {
-            $counter++
-            if ($counter % 150 -eq 0) {
-                Write-Progress -Activity "DupeLocatr | Enumerating files" -Status "$counter files found so far..."
-            }
-            if (-not (Test-IsExcluded $_.FullName)) {
-                if ($_.Length -ge $Script:MinFileSizeBytes) {
-                    if (Test-CategoryMatch $_.Extension) {
-                        $found.Add($_)
-                    }
+    ForEach-Object {
+        $counter++
+        if ($counter % 150 -eq 0) {
+            Write-Progress -Activity "DupeLocatr | Enumerating files" -Status "$counter files found so far..."
+        }
+        if (-not (Test-IsExcluded $_.FullName)) {
+            if ($_.Length -ge $Script:MinFileSizeBytes) {
+                if (Test-CategoryMatch $_.Extension) {
+                    $found.Add($_)
                 }
             }
         }
+    }
 
     Write-Progress -Activity "DupeLocatr | Enumerating files" -Completed
     Write-Host "  Total files considered: $($found.Count)" -ForegroundColor Gray
@@ -217,7 +191,8 @@ function Find-Duplicates {
         Write-Progress -Activity "DupeLocatr | Verifying duplicates" -Status "$i / $total : $($f.Name)" -PercentComplete ([Math]::Round(($i / $total) * 100))
         try {
             $h = (Get-FileHash -LiteralPath $f.FullName -Algorithm $Script:HashAlgo -ErrorAction Stop).Hash
-        } catch {
+        }
+        catch {
             $h = $null
         }
         if ($h) {
@@ -236,12 +211,12 @@ function Find-Duplicates {
         $group = $fullMap[$key]
         if ($group.Count -gt 1) {
             $sorted = switch ($Script:KeepStrategy) {
-                'Oldest'       { $group | Sort-Object LastWriteTime }
-                'Newest'       { $group | Sort-Object LastWriteTime -Descending }
+                'Oldest' { $group | Sort-Object LastWriteTime }
+                'Newest' { $group | Sort-Object LastWriteTime -Descending }
                 'ShortestPath' { $group | Sort-Object { $_.FullName.Length } }
-                default        { $group | Sort-Object FullName }
+                default { $group | Sort-Object FullName }
             }
-            $keep  = $sorted[0]
+            $keep = $sorted[0]
             $dupes = @($sorted | Select-Object -Skip 1)
             $results += [PSCustomObject]@{
                 Hash           = $key
@@ -348,8 +323,8 @@ function Invoke-MoveDuplicates {
         $destPath = Join-Path $destFolder $destName
         if (Test-Path -LiteralPath $destPath) {
             $parentTag = ($f.Directory.Name -replace '[^\w\-]', '_')
-            $destName  = "{0}__{1}" -f $parentTag, $f.Name
-            $destPath  = Join-Path $destFolder $destName
+            $destName = "{0}__{1}" -f $parentTag, $f.Name
+            $destPath = Join-Path $destFolder $destName
             $dupCounter = 1
             while (Test-Path -LiteralPath $destPath) {
                 $destName = "{0}__{1}__{2}" -f $parentTag, $dupCounter, $f.Name
@@ -366,10 +341,12 @@ function Invoke-MoveDuplicates {
             }
             if ((Test-Path -LiteralPath $movedRaw) -or (Test-Path -LiteralPath $destPath)) {
                 $moved++
-            } else {
+            }
+            else {
                 $errors++
             }
-        } catch {
+        }
+        catch {
             $errors++
         }
     }
@@ -415,11 +392,13 @@ function Invoke-DeleteDuplicates {
                     [Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs,
                     [Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin
                 )
-            } else {
+            }
+            else {
                 Remove-Item -LiteralPath $f.FullName -Force -ErrorAction Stop
             }
             $deleted++
-        } catch {
+        }
+        catch {
             $errors++
         }
     }
@@ -446,7 +425,7 @@ function Show-ScanResults {
 
     $Script:LastResults = $Results
     $totalDupeFiles = ($Results | ForEach-Object { $_.DuplicateFiles.Count } | Measure-Object -Sum).Sum
-    $totalDupeSize  = ($Results | ForEach-Object { $_.DuplicateFiles.Count * $_.SizeEach } | Measure-Object -Sum).Sum
+    $totalDupeSize = ($Results | ForEach-Object { $_.DuplicateFiles.Count * $_.SizeEach } | Measure-Object -Sum).Sum
     Write-DuplicateLog -Results $Results
 
     $done = $false
@@ -514,7 +493,8 @@ function Show-SettingsMenu {
                 $cat = Read-Host "  Type a category"
                 if ($cat -eq 'All' -or $Script:Categories.ContainsKey($cat)) {
                     $Script:CategoryFilter = $cat
-                } else {
+                }
+                else {
                     Write-Host "  Unknown category, keeping '$Script:CategoryFilter'." -ForegroundColor Red
                     Start-Sleep -Seconds 1
                 }
@@ -563,7 +543,8 @@ function Show-MainMenu {
                 Write-Host "  ---- Log File ----" -ForegroundColor Magenta
                 if (Test-Path -LiteralPath $Script:LogPath) {
                     Get-Content -LiteralPath $Script:LogPath | ForEach-Object { Write-Host $_ }
-                } else {
+                }
+                else {
                     Write-Host "  No log file yet. Run a scan first." -ForegroundColor Yellow
                 }
                 Write-Host ""
