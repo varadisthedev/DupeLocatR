@@ -72,12 +72,13 @@ function Format-Size {
 function Write-Banner {
     Clear-Host
     $art = @'
-     _                  _                    _        
-  __| |_   _ _ __   ___| |    ___   ___ __ _| |_ _ __ 
- / _` | | | | '_ \ / _ \ |   / _ \ / __/ _` | __| '__|
-| (_| | |_| | |_) |  __/ |__| (_) | (_| (_| | |_| |   
- \__,_|\__,_| .__/ \___|_____\___/ \___\__,_|\__|_|   
-            |_|                                       
+    .___                  .__                        __          
+  __| _/_ ________   ____ |  |   ____   ____ _____ _/  |________ 
+ / __ |  |  \____ \_/ __ \|  |  /  _ \_/ ___\\__  \\   __\_  __ \
+/ /_/ |  |  /  |_> >  ___/|  |_(  <_> )  \___ / __ \|  |  |  | \/
+\____ |____/|   __/ \___  >____/\____/ \___  >____  /__|  |__|   
+     \/     |__|        \/                 \/     \/             
+                                     
 '@
     $lines  = $art -split "`r`n|`n"
     $colors = @('Magenta','Cyan','Blue','Green','Yellow','Red')
@@ -540,6 +541,7 @@ function Show-MainMenu {
     while (-not $exit) {
         Write-Banner
         Write-Host "  Target folder: $Script:RootPath" -ForegroundColor Gray
+        Write-Host "  *We will also scan every subfolder in the current directory" -ForegroundColor Green
         Write-Host ""
         Write-Host "   [1] Start duplicate scan"
         Write-Host "   [2] Settings"
